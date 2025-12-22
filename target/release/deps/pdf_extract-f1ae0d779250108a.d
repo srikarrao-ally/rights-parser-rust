@@ -1,0 +1,11 @@
+/Users/srikar/work/rights-parser-rust/target/release/deps/pdf_extract-f1ae0d779250108a.d: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/lib.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/core_fonts.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/glyphnames.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/zapfglyphnames.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/encodings.rs
+
+/Users/srikar/work/rights-parser-rust/target/release/deps/libpdf_extract-f1ae0d779250108a.rlib: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/lib.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/core_fonts.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/glyphnames.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/zapfglyphnames.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/encodings.rs
+
+/Users/srikar/work/rights-parser-rust/target/release/deps/libpdf_extract-f1ae0d779250108a.rmeta: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/lib.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/core_fonts.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/glyphnames.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/zapfglyphnames.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/encodings.rs
+
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/lib.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/core_fonts.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/glyphnames.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/zapfglyphnames.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pdf-extract-0.7.12/src/encodings.rs:

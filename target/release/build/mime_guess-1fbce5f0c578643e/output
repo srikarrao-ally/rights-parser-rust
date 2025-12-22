@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/Users/srikar/work/rights-parser-rust/target/release/build/mime_guess-1fbce5f0c578643e/out/mime_types_generated.rs

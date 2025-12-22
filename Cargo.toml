@@ -1,0 +1,46 @@
+
+[package]
+name = "rights-agreement-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web Framework
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+
+# PDF Processing
+pdf-extract = "0.7"
+lopdf = "0.32"
+
+# JSON & Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# LLM Integration
+reqwest = { version = "0.11", features = ["json"] }
+ollama-rs = "0.1"
+
+# Async
+async-trait = "0.1"
+
+# Error Handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Environment
+dotenv = "0.15"
+
+# File Handling
+tempfile = "3.8"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Text Processing
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }

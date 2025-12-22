@@ -1,0 +1,6 @@
+/Users/srikar/work/rights-parser-rust/target/release/build/mime_guess-ef605a5c3dea241c/build_script_build-ef605a5c3dea241c.d: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mime_guess-2.0.5/build.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mime_guess-2.0.5/src/mime_types.rs
+
+/Users/srikar/work/rights-parser-rust/target/release/build/mime_guess-ef605a5c3dea241c/build_script_build-ef605a5c3dea241c: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mime_guess-2.0.5/build.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mime_guess-2.0.5/src/mime_types.rs
+
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mime_guess-2.0.5/build.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mime_guess-2.0.5/src/mime_types.rs:
