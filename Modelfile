@@ -1,12 +1,11 @@
 # Modelfile
 # Base model
-FROM qwen3-vl:8b
+FROM llama3.3:70b-instruct-q4_K_M
 
-# # Model parameters
-# PARAMETER temperature 1
-# PARAMETER top_p 0.9
-# PARAMETER top_k 40
-# PARAMETER num_predict 16384
+# Model parameters
+PARAMETER temperature 0.05
+PARAMETER top_k 40
+PARAMETER num_predict 16384
 
 # System prompt for rights agreement parsing
 SYSTEM """You are an expert at parsing media rights agreements. Extract structured information accurately and return ONLY valid JSON. Complete all fields in the JSON response - do not truncate.
