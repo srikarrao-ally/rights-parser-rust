@@ -2,6 +2,8 @@
 use anyhow::{Context, Result};
 use pdf_extract::extract_text_from_mem;
 use tracing::{info, warn};
+use std::process::Command;
+use std::io::Read;
 
 pub struct PDFExtractor;
 
@@ -10,20 +12,37 @@ impl PDFExtractor {
         Self
     }
 
-    pub async fn extract_text(&self, pdf_data: &[u8]) -> Result<String> {
-        info!("📖 Extracting text from PDF ({} bytes)", pdf_data.len());
-
-        // Extract text from PDF
-        let text = extract_text_from_mem(pdf_data)
-            .context("Failed to extract text from PDF")?;
-
-        // Clean and normalize text
-        let cleaned_text = self.clean_text(&text);
-
-        info!("✅ Extracted {} characters", cleaned_text.len());
-
-        Ok(cleaned_text)
+   pub async fn extract_text(&self, pdf_data: &[u8]) -> Result<String> {
+    info!("📖 Extracting text from PDF ({} bytes)", pdf_data.len());
+    
+    // Try pdf_extract first
+    match extract_text_from_mem(pdf_data) {
+        Ok(text) => {
+            info!("✅ pdf_extract succeeded");
+            Ok(self.clean_text(&text))
+        }
+        Err(e) => {
+            warn!("pdf_extract failed: {}. Falling back to pdftotext", e);
+            self.extract_with_pdftotext(pdf_data).await
+        }
     }
+}
+
+async fn extract_with_pdftotext(&self, pdf_data: &[u8]) -> Result<String> {
+    let temp_path = "/tmp/temp.pdf";
+    std::fs::write(temp_path, pdf_data)?;
+    
+    let output = Command::new("pdftotext")
+        .args(&["-layout", temp_path, "-"])
+        .output()
+        .context("pdftotext failed")?;
+    
+    std::fs::remove_file(temp_path)?;
+    
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(self.clean_text(&text))
+}
+
 
     fn clean_text(&self, text: &str) -> String {
         text

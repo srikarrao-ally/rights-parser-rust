@@ -37,7 +37,7 @@ async fn main() {
     // Initialize services
     let llm_service = Arc::new(LLMService::new(
         "http://localhost:11434".to_string(),
-        "rights-parser:latest".to_string(),
+        "llama3".to_string(),
     ));
     let pdf_extractor = Arc::new(PDFExtractor::new());
     let json_builder = Arc::new(JSONBuilder::new());
@@ -53,6 +53,7 @@ async fn main() {
         .route("/", get(health_check))
         .route("/api/parse", post(parse_pdf))
         .route("/api/health", get(health_check))
+        .route("/api/debug-pdf", post(debug_pdf_size))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -136,4 +137,31 @@ async fn parse_pdf(
     info!("✅ JSON generation complete");
 
     Ok(Json(json_output))
+}
+
+
+
+async fn debug_pdf_size(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mut pdf_data: Vec<u8> = Vec::new();
+    
+    // Fix 1: Proper error conversion
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {}", e)))? 
+    {
+        if field.name() == Some("pdf") {
+            pdf_data = field.bytes().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Field bytes error: {}", e)))?
+                .to_vec();
+        }
+    }
+    
+    Ok(Json(serde_json::json!({
+        "pdf_size_bytes": pdf_data.len(),
+        "first_100_bytes": std::str::from_utf8(&pdf_data[..100.min(pdf_data.len())]).unwrap_or("non-utf8"),
+        "is_pdf_header": pdf_data.starts_with(b"%PDF"),
+        "success": true
+    })))
 }

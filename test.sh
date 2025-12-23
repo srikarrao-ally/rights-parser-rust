@@ -125,3 +125,11 @@ echo "  cd rights-agreement-demo"
 echo "  cp /tmp/parsed-agreement.json data/zee-eagle-agreement.json"
 echo "  npm run deploy:full"
 echo ""
+
+
+
+curl -X POST http://localhost:8080/api/parse \
+  -F "pdf=~/work/rights-parser-rust/Kalki.pdf" \
+  -o ~/work/rights-parser-rust/kalki-parsed.json
+
+cat ~/work/rights-parser-rust/kalki-parsed.json | jq .
