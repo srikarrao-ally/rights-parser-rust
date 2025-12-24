@@ -1,0 +1,11 @@
+/Users/srikar/work/rights-parser-rust/target/debug/deps/utf16string-0d86347a3f779fb8.d: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/lib.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/error.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/iters.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/slicing.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/utf16.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/wstr.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/wstring.rs
+
+/Users/srikar/work/rights-parser-rust/target/debug/deps/libutf16string-0d86347a3f779fb8.rmeta: /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/lib.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/error.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/iters.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/slicing.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/utf16.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/wstr.rs /Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/wstring.rs
+
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/lib.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/error.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/iters.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/slicing.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/utf16.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/wstr.rs:
+/Users/srikar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf16string-0.2.0/src/wstring.rs:
