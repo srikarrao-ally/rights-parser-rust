@@ -31,6 +31,8 @@ impl PDFExtractor {
         }
     }
 
+    
+
     async fn extract_with_pdftotext(&self, pdf_data: &[u8]) -> Result<String> {
         let temp_path = "/tmp/temp.pdf";
         std::fs::write(temp_path, pdf_data)?;
@@ -52,29 +54,32 @@ impl PDFExtractor {
     }
 
     fn print_extracted_text(&self, text: &str) {
-        info!("📄 ========== EXTRACTED TEXT ==========");
-        info!("Length: {} characters", text.len());
-        info!("Length: {} words", text.split_whitespace().count());
-        info!("");
-        
-        // Print first 500 characters
-        let preview_length = 500.min(text.len());
-        info!("First {} characters:", preview_length);
-        info!("{}", &text[..preview_length]);
-        info!("");
-        
-        // Print last 500 characters if text is long enough
-        if text.len() > 1000 {
-            info!("...");
-            info!("");
-            info!("Last 500 characters:");
-            let start = text.len().saturating_sub(500);
-            info!("{}", &text[start..]);
-        }
-        
-        info!("📄 ====================================");
-        info!("");
+    info!("📄 ========== EXTRACTED TEXT ==========");
+    info!("Length: {} characters", text.len());
+    info!("Length: {} words", text.split_whitespace().count());
+    info!("");
+    
+    // SAVE FULL TEXT TO FILE
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("/tmp/extracted_text_{}.txt", timestamp);
+    
+    if let Err(e) = std::fs::write(&filename, text) {
+        warn!("Failed to save extracted text: {}", e);
+    } else {
+        info!("💾 Full text saved to: {}", filename);
     }
+    
+    // Print preview
+    info!("First 500 characters:");
+    info!("{}", &text[..500.min(text.len())]);
+    info!("");
+    info!("...");
+    info!("");
+    info!("Last 500 characters:");
+    let start = text.len().saturating_sub(500);
+    info!("{}", &text[start..]);
+    info!("📄 ====================================");
+}
 
     fn clean_text(&self, text: &str) -> String {
         text
