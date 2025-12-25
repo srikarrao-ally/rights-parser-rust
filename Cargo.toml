@@ -1,6 +1,6 @@
 [package]
 name = "rights-agreement-parser"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -10,27 +10,37 @@ tokio = { version = "1", features = ["full"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# HTTP client - IMPORTANT: Must have "multipart" feature!
+# HTTP client
 reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
 
-# Encryption
+# Encryption & Security
 aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.21"
+sha2 = "0.10"
+hex = "0.4"
 
 # Utilities
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+dotenv = "0.15"
 
 # PDF processing
 pdfium-render = { version = "0.8", features = ["bindings"] }
 regex = "1.10"
+
+# Background jobs
+tokio-cron-scheduler = "0.9"
 pdf-extract = "0.10.0"
 
 [profile.release]
