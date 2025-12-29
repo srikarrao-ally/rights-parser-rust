@@ -6,7 +6,7 @@ use aes_gcm::{
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use rand::RngCore;
-use tracing::{info, error};
+use tracing::info;
 
 pub struct EncryptionService {
     // This struct can hold configuration if needed in the future

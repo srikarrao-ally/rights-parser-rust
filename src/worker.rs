@@ -1,106 +1,94 @@
-// src/worker.rs - Background worker for processing PDF jobs
-use crate::AppState;
+// src/worker.rs - Background job processor with webhook callback
 use sqlx::PgPool;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
+use std::sync::Arc;
 
-pub async fn start_worker(state: AppState) {
+pub async fn start_worker(
+    db: PgPool,
+    pdf_extractor: Arc<crate::pdf_extractor::PDFExtractor>,
+    llm_service: Arc<crate::llm_service::LLMService>,
+    encryption_service: Arc<crate::encryption::EncryptionService>,
+    ipfs_client: Arc<crate::ipfs_client::IPFSClient>,
+) {
     info!("🔧 Background worker started");
 
     loop {
-        // Process pending jobs
-        if let Err(e) = process_pending_jobs(&state).await {
+        if let Err(e) = process_pending_jobs(
+            &db,
+            &pdf_extractor,
+            &llm_service,
+            &encryption_service,
+            &ipfs_client,
+        ).await {
             error!("Worker error: {}", e);
         }
 
-        // Sleep for 5 seconds before next poll
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
 }
 
-async fn process_pending_jobs(state: &AppState) -> anyhow::Result<()> {
-    // Fetch pending jobs
+async fn process_pending_jobs(
+    db: &PgPool,
+    pdf_extractor: &Arc<crate::pdf_extractor::PDFExtractor>,
+    llm_service: &Arc<crate::llm_service::LLMService>,
+    encryption_service: &Arc<crate::encryption::EncryptionService>,
+    ipfs_client: &Arc<crate::ipfs_client::IPFSClient>,
+) -> anyhow::Result<()> {
     let pending_jobs = sqlx::query!(
-        r#"
-        SELECT id, file_path, webhook_url
-        FROM jobs
-        WHERE status = 'pending'
-        ORDER BY created_at ASC
-        LIMIT 5
-        "#
+        "SELECT id, file_path, file_name, file_size FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 5"
     )
-    .fetch_all(&state.db)
+    .fetch_all(db)
     .await?;
 
     for job in pending_jobs {
         info!("🔄 Processing job: {}", job.id);
         
-        // Mark as processing
-        sqlx::query!(
-            "UPDATE jobs SET status = 'processing', started_at = NOW() WHERE id = $1",
-            job.id
-        )
-        .execute(&state.db)
-        .await?;
+        sqlx::query!("UPDATE jobs SET status = 'processing', started_at = NOW() WHERE id = $1", job.id)
+            .execute(db)
+            .await?;
 
-        // Process the job
-        match process_job(state, job.id, &job.file_path).await {
+        match process_job(job.id, &job.file_path, pdf_extractor, llm_service, encryption_service, ipfs_client).await {
             Ok((ipfs_cid, encryption_key, parsed_json)) => {
-                // Update job as completed
-                let processing_time = sqlx::query_scalar!(
+                let processing_time: Option<i64> = sqlx::query_scalar!(
                     "SELECT EXTRACT(epoch FROM (NOW() - started_at))::bigint * 1000 FROM jobs WHERE id = $1",
                     job.id
                 )
-                .fetch_one(&state.db)
+                .fetch_one(db)
                 .await
-                .unwrap_or(0);
+                .ok()
+                .flatten();
+
+                let processing_time_val = processing_time.unwrap_or(0);
 
                 sqlx::query!(
-                    r#"
-                    UPDATE jobs
-                    SET status = 'completed',
-                        completed_at = NOW(),
-                        processing_time_ms = $2,
-                        ipfs_cid = $3,
-                        encryption_key = $4,
-                        parsed_json = $5
-                    WHERE id = $1
-                    "#,
-                    job.id,
-                    processing_time,
-                    ipfs_cid,
-                    encryption_key,
-                    parsed_json
+                    "UPDATE jobs SET status = 'completed', completed_at = NOW(), processing_time_ms = $2,
+                     ipfs_cid = $3, encryption_key = $4, parsed_json = $5 WHERE id = $1",
+                    job.id, processing_time_val, ipfs_cid, encryption_key, parsed_json
                 )
-                .execute(&state.db)
+                .execute(db)
                 .await?;
 
-                info!("✅ Job completed: {} ({}ms)", job.id, processing_time);
+                info!("✅ Job completed: {} ({}ms)", job.id, processing_time_val);
 
-                // Send webhook if configured
-                if let Some(webhook_url) = job.webhook_url {
-                    tokio::spawn(async move {
-                        send_webhook(&webhook_url, job.id, &ipfs_cid, &encryption_key).await;
-                    });
-                }
+                // Send webhook callback
+                send_webhook_callback(
+                    &ipfs_cid,
+                    &encryption_key,
+                    &job.file_name,
+                    job.file_size,
+                    processing_time_val,
+                    &parsed_json,
+                ).await;
             }
             Err(e) => {
                 error!("❌ Job failed: {} - {}", job.id, e);
                 
-                // Mark as failed
                 sqlx::query!(
-                    r#"
-                    UPDATE jobs
-                    SET status = 'failed',
-                        completed_at = NOW(),
-                        error_message = $2,
-                        retry_count = retry_count + 1
-                    WHERE id = $1
-                    "#,
-                    job.id,
-                    e.to_string()
+                    "UPDATE jobs SET status = 'failed', completed_at = NOW(), error_message = $2 WHERE id = $1",
+                    job.id, e.to_string()
                 )
-                .execute(&state.db)
+                .execute(db)
                 .await?;
             }
         }
@@ -110,68 +98,87 @@ async fn process_pending_jobs(state: &AppState) -> anyhow::Result<()> {
 }
 
 async fn process_job(
-    state: &AppState,
-    job_id: Uuid,
+    _job_id: Uuid,
     file_path: &str,
+    pdf_extractor: &Arc<crate::pdf_extractor::PDFExtractor>,
+    llm_service: &Arc<crate::llm_service::LLMService>,
+    encryption_service: &Arc<crate::encryption::EncryptionService>,
+    ipfs_client: &Arc<crate::ipfs_client::IPFSClient>,
 ) -> anyhow::Result<(String, String, serde_json::Value)> {
-    // Read PDF file
     let pdf_bytes = tokio::fs::read(file_path).await?;
     
-    // Extract text
     info!("🔍 Extracting text from PDF");
-    let pdf_text = state.pdf_extractor.extract_text(&pdf_bytes).await?;
+    let pdf_text = pdf_extractor.extract_text(&pdf_bytes).await?;
     
     if pdf_text.len() < 100 {
-        anyhow::bail!("Extracted text too short: {} chars", pdf_text.len());
+        anyhow::bail!("Extracted text too short");
     }
     
     info!("✅ Extracted {} characters", pdf_text.len());
 
-    // Parse with LLM
     info!("🤖 Calling LLM for parsing");
-    let json_string = state.llm_service.parse_agreement(&pdf_text).await?;
+    let json_string = llm_service.parse_agreement(&pdf_text).await?;
     
     info!("✅ Got JSON from LLM ({} bytes)", json_string.len());
 
-    // Parse to validate JSON
     let parsed_json: serde_json::Value = serde_json::from_str(&json_string)?;
 
-    // Encrypt JSON
     info!("🔐 Encrypting JSON");
-    let (encrypted_data, encryption_key) = state.encryption_service.encrypt(&json_string)?;
+    let (encrypted_data, encryption_key) = encryption_service.encrypt(&json_string)?;
 
-    // Upload to IPFS
     info!("📤 Uploading to IPFS");
-    let ipfs_cid = state.ipfs_client.upload(&encrypted_data).await?;
+    let ipfs_cid = ipfs_client.upload(&encrypted_data).await?;
 
     info!("✅ Uploaded to IPFS: {}", ipfs_cid);
 
     Ok((ipfs_cid, encryption_key, parsed_json))
 }
 
-async fn send_webhook(url: &str, job_id: Uuid, ipfs_cid: &str, encryption_key: &str) {
-    let client = reqwest::Client::new();
-    
+async fn send_webhook_callback(
+    ipfs_cid: &str,
+    encryption_key: &str,
+    file_name: &str,
+    file_size: i64,
+    processing_time_ms: i64,
+    parsed_data: &serde_json::Value,
+) {
+    let webhook_url = "https://digitalrights.tfhy.in/api/rights-management/ai-contract-callback/";
+    let bearer_token = "VbwPP5fFpw/16Sm6GygYhc29oLyqMgcUbyAKWUiEf3c=";
+
+    info!("📡 Sending webhook callback to: {}", webhook_url);
+
     let payload = serde_json::json!({
-        "job_id": job_id.to_string(),
-        "status": "completed",
         "ipfs_cid": ipfs_cid,
+        "ipfs_url": format!("ipfs://{}", ipfs_cid),
         "encryption_key": encryption_key,
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "ipfs_gateway_url": format!("https://ipfs.io/ipfs/{}", ipfs_cid),
+        "decrypted_data": parsed_data,
+        "metadata": {
+            "file_name": file_name,
+            "file_size": file_size,
+            "processed_at": chrono::Utc::now().to_rfc3339(),
+            "model_used": "llama3.3:70b-instruct-q4_K_M",
+            "processing_time_ms": processing_time_ms
+        }
     });
 
-    match client
-        .post(url)
+    match reqwest::Client::new()
+        .post(webhook_url)
+        .header("Authorization", format!("Bearer {}", bearer_token))
+        .header("Content-Type", "application/json")
         .json(&payload)
-        .timeout(std::time::Duration::from_secs(10))
         .send()
         .await
     {
-        Ok(resp) => {
-            info!("✅ Webhook sent to {} (status: {})", url, resp.status());
+        Ok(response) => {
+            if response.status().is_success() {
+                info!("✅ Webhook sent successfully");
+            } else {
+                error!("❌ Webhook failed with status: {} - {}", response.status(), response.text().await.unwrap_or_default());
+            }
         }
         Err(e) => {
-            warn!("⚠️  Webhook failed: {}", e);
+            error!("❌ Failed to send webhook: {}", e);
         }
     }
 }
