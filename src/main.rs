@@ -1,4 +1,4 @@
-// src/main.rs - Production API with IPFS-only result
+// src/main.rs - Production API with queue_id and callback_url support
 mod models;
 mod pdf_extractor;
 mod llm_service;
@@ -47,6 +47,7 @@ struct StatusResponse {
     processing_time_ms: Option<i64>,
     ipfs_cid: Option<String>,
     error_message: Option<String>,
+    queue_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -155,6 +156,7 @@ async fn main() {
     info!("   GET  /api/v1/decrypt/:cid?key=<key> - Decrypt from IPFS");
     info!("   GET  /health - Health check");
     info!("🔑 Authentication: X-API-Key header required for upload");
+    info!("🔔 Supports custom callback_url and queue_id per upload");
 
     axum::serve(listener, app).await.expect("Server failed");
 }
@@ -202,11 +204,25 @@ async fn upload_handler(
 
     let mut pdf_bytes: Option<Bytes> = None;
     let mut file_name = String::from("document.pdf");
+    let mut queue_id: Option<String> = None;
+    let mut callback_url: Option<String> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid multipart"))? {
-        if field.name() == Some("file") {
-            file_name = field.file_name().unwrap_or("document.pdf").to_string();
-            pdf_bytes = Some(field.bytes().await.map_err(|_| error_response(StatusCode::BAD_REQUEST, "Failed to read file"))?);
+        let field_name = field.name().unwrap_or("");
+        
+        match field_name {
+            "file" => {
+                file_name = field.file_name().unwrap_or("document.pdf").to_string();
+                pdf_bytes = Some(field.bytes().await.map_err(|_| error_response(StatusCode::BAD_REQUEST, "Failed to read file"))?);
+            }
+            "queue_id" => {
+                let text = field.text().await.map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid queue_id"))?;
+                queue_id = text.parse::<String>().ok();
+            }
+            "callback_url" => {
+                callback_url = Some(field.text().await.map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid callback_url"))?);
+            }
+            _ => {}
         }
     }
 
@@ -214,6 +230,12 @@ async fn upload_handler(
     let file_size = pdf_bytes.len() as i64;
     
     info!("📄 Received: {} ({} bytes)", file_name, file_size);
+    if let Some(ref qid) = queue_id {
+        info!("🔢 Queue ID: {}", qid);
+    }
+    if let Some(ref url) = callback_url {
+        info!("🔔 Callback URL: {}", url);
+    }
 
     let job_id = Uuid::new_v4();
     let file_path = format!("{}/{}.pdf", state.upload_dir, job_id);
@@ -227,8 +249,9 @@ async fn upload_handler(
     let api_key_hash = hex::encode(hasher.finalize());
 
     sqlx::query!(
-        "INSERT INTO jobs (id, file_name, file_path, file_size, api_key_hash, status) VALUES ($1, $2, $3, $4, $5, 'pending')",
-        job_id, file_name, file_path, file_size, api_key_hash
+        "INSERT INTO jobs (id, file_name, file_path, file_size, api_key_hash, queue_id, callback_url, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')",
+        job_id, file_name, file_path, file_size, api_key_hash, queue_id, callback_url
     ).execute(&state.db).await.map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create job"))?;
 
     info!("✅ Job created: {}", job_id);
@@ -242,7 +265,7 @@ async fn upload_handler(
 }
 
 async fn status_handler(State(state): State<AppState>, Path(job_id): Path<Uuid>) -> Result<Json<StatusResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let job = sqlx::query!("SELECT file_name, status, created_at, completed_at, processing_time_ms, ipfs_cid, error_message FROM jobs WHERE id = $1", job_id)
+    let job = sqlx::query!("SELECT file_name, status, created_at, completed_at, processing_time_ms, ipfs_cid, error_message, queue_id FROM jobs WHERE id = $1", job_id)
         .fetch_optional(&state.db).await.map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "Job not found"))?;
 
@@ -255,11 +278,12 @@ async fn status_handler(State(state): State<AppState>, Path(job_id): Path<Uuid>)
         processing_time_ms: job.processing_time_ms,
         ipfs_cid: job.ipfs_cid,
         error_message: job.error_message,
+        queue_id: job.queue_id,
     }))
 }
 
 async fn result_handler(State(state): State<AppState>, Path(job_id): Path<Uuid>) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let job = sqlx::query!("SELECT file_name, file_size, status, completed_at, processing_time_ms, ipfs_cid, encryption_key, model_used FROM jobs WHERE id = $1", job_id)
+    let job = sqlx::query!("SELECT file_name, file_size, status, completed_at, processing_time_ms, ipfs_cid, encryption_key, model_used, queue_id FROM jobs WHERE id = $1", job_id)
         .fetch_optional(&state.db).await.map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "Job not found"))?;
 
@@ -270,7 +294,7 @@ async fn result_handler(State(state): State<AppState>, Path(job_id): Path<Uuid>)
     let ipfs_cid = job.ipfs_cid.ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "IPFS CID not found"))?;
     let encryption_key = job.encryption_key.ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Encryption key not found"))?;
 
-    Ok(Json(serde_json::json!({
+    let mut response = serde_json::json!({
         "ipfs_cid": ipfs_cid,
         "ipfs_url": format!("ipfs://{}", ipfs_cid),
         "encryption_key": encryption_key,
@@ -282,7 +306,13 @@ async fn result_handler(State(state): State<AppState>, Path(job_id): Path<Uuid>)
             "model_used": job.model_used.unwrap_or_else(|| "unknown".to_string()),
             "processing_time_ms": job.processing_time_ms.unwrap_or(0)
         }
-    })))
+    });
+
+    if let Some(qid) = job.queue_id {
+        response["queue_id"] = serde_json::json!(qid);
+    }
+
+    Ok(Json(response))
 }
 
 async fn decrypt_handler(

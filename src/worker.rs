@@ -1,4 +1,3 @@
-// src/worker.rs - Background job processor with webhook callback
 use sqlx::PgPool;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -36,13 +35,17 @@ async fn process_pending_jobs(
     ipfs_client: &Arc<crate::ipfs_client::IPFSClient>,
 ) -> anyhow::Result<()> {
     let pending_jobs = sqlx::query!(
-        "SELECT id, file_path, file_name, file_size FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 5"
+        "SELECT id, file_path, file_name, file_size, queue_id, callback_url 
+         FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 5"
     )
     .fetch_all(db)
     .await?;
 
     for job in pending_jobs {
         info!("🔄 Processing job: {}", job.id);
+        if let Some(ref qid) = job.queue_id {
+            info!("🔢 Queue ID: {}", qid);
+        }
         
         sqlx::query!("UPDATE jobs SET status = 'processing', started_at = NOW() WHERE id = $1", job.id)
             .execute(db)
@@ -71,25 +74,62 @@ async fn process_pending_jobs(
 
                 info!("✅ Job completed: {} ({}ms)", job.id, processing_time_val);
 
-                // Send webhook callback
-                send_webhook_callback(
-                    &ipfs_cid,
-                    &encryption_key,
-                    &job.file_name,
-                    job.file_size,
-                    processing_time_val,
-                    &parsed_json,
-                ).await;
+                // Send "completed" webhook
+                if let Some(callback_url) = job.callback_url {
+                    send_webhook_callback(
+                        &callback_url,
+                        job.queue_id,
+                        "completed",
+                        Some(&ipfs_cid),
+                        Some(&encryption_key),
+                        &job.file_name,
+                        job.file_size,
+                        processing_time_val,
+                        Some(&parsed_json),
+                        None,
+                    ).await;
+                } else {
+                    info!("⏭️  No callback URL provided - skipping webhook");
+                }
             }
             Err(e) => {
-                error!("❌ Job failed: {} - {}", job.id, e);
+                let error_msg = e.to_string();
+                
+                // Determine if it's a processing failure or system error
+                let status = if error_msg.contains("extract") || 
+                                error_msg.contains("too short") || 
+                                error_msg.contains("parse") ||
+                                error_msg.contains("LLM") ||
+                                error_msg.contains("JSON") {
+                    "failed"  // Processing/business logic failure
+                } else {
+                    "error"   // System/infrastructure error
+                };
+                
+                error!("❌ Job {}: {} - {}", status, job.id, error_msg);
                 
                 sqlx::query!(
-                    "UPDATE jobs SET status = 'failed', completed_at = NOW(), error_message = $2 WHERE id = $1",
-                    job.id, e.to_string()
+                    "UPDATE jobs SET status = $2, completed_at = NOW(), error_message = $3 WHERE id = $1",
+                    job.id, status, error_msg
                 )
                 .execute(db)
                 .await?;
+
+                // Send "failed" or "error" webhook
+                if let Some(callback_url) = job.callback_url {
+                    send_webhook_callback(
+                        &callback_url,
+                        job.queue_id,
+                        status,
+                        None,
+                        None,
+                        &job.file_name,
+                        job.file_size,
+                        0,
+                        None,
+                        Some(&error_msg),
+                    ).await;
+                }
             }
         }
     }
@@ -134,36 +174,88 @@ async fn process_job(
     Ok((ipfs_cid, encryption_key, parsed_json))
 }
 
+// Handle completed, failed, and error statuses
 async fn send_webhook_callback(
-    ipfs_cid: &str,
-    encryption_key: &str,
+    callback_url: &str,
+    queue_id: Option<String>,
+    status: &str,  // "completed", "failed", or "error"
+    ipfs_cid: Option<&str>,
+    encryption_key: Option<&str>,
     file_name: &str,
     file_size: i64,
     processing_time_ms: i64,
-    parsed_data: &serde_json::Value,
+    parsed_data: Option<&serde_json::Value>,
+    error_message: Option<&str>,
 ) {
-    let webhook_url = "https://digitalrights.tfhy.in/api/rights-management/ai-contract-callback/";
     let bearer_token = "VbwPP5fFpw/16Sm6GygYhc29oLyqMgcUbyAKWUiEf3c=";
 
-    info!("📡 Sending webhook callback to: {}", webhook_url);
+    info!("📡 Sending webhook callback to: {}", callback_url);
+    if let Some(ref qid) = queue_id {
+        info!("🔢 Including queue_id: {}", qid);
+    }
+    info!("📊 Status: {}", status);
 
-    let payload = serde_json::json!({
-        "ipfs_cid": ipfs_cid,
-        "ipfs_url": format!("ipfs://{}", ipfs_cid),
-        "encryption_key": encryption_key,
-        "ipfs_gateway_url": format!("https://ipfs.io/ipfs/{}", ipfs_cid),
-        "decrypted_data": parsed_data,
-        "metadata": {
-            "file_name": file_name,
-            "file_size": file_size,
-            "processed_at": chrono::Utc::now().to_rfc3339(),
-            "model_used": "llama3.3:70b-instruct-q4_K_M",
-            "processing_time_ms": processing_time_ms
+    let payload = if let Some(qid) = queue_id {
+        match status {
+            "completed" => {
+                // Success case - include all data
+                serde_json::json!({
+                    "queue_id": qid,
+                    "status": "completed",
+                    "ipfs_cid": ipfs_cid.unwrap_or(""),
+                    "ipfs_url": format!("ipfs://{}", ipfs_cid.unwrap_or("")),
+                    "encryption_key": encryption_key.unwrap_or(""),
+                    "ipfs_gateway_url": format!("https://ipfs.io/ipfs/{}", ipfs_cid.unwrap_or("")),
+                    "decrypted_data": parsed_data.unwrap_or(&serde_json::json!({})),
+                    "metadata": {
+                        "file_name": file_name,
+                        "file_size": file_size,
+                        "processed_at": chrono::Utc::now().to_rfc3339(),
+                        "model_used": "llama3.3:70b-instruct-q4_K_M",
+                        "processing_time_ms": processing_time_ms
+                    }
+                })
+            },
+            "failed" => {
+                // Processing failed - send error details
+                serde_json::json!({
+                    "queue_id": qid,
+                    "status": "failed",
+                    "error_message": error_message.unwrap_or("Processing failed"),
+                    "metadata": {
+                        "file_name": file_name,
+                        "file_size": file_size,
+                        "processed_at": chrono::Utc::now().to_rfc3339(),
+                        "processing_time_ms": processing_time_ms
+                    }
+                })
+            },
+            "error" => {
+                // System error - send error details
+                serde_json::json!({
+                    "queue_id": qid,
+                    "status": "error",
+                    "error_message": error_message.unwrap_or("System error occurred"),
+                    "metadata": {
+                        "file_name": file_name,
+                        "file_size": file_size,
+                        "processed_at": chrono::Utc::now().to_rfc3339(),
+                        "processing_time_ms": processing_time_ms
+                    }
+                })
+            },
+            _ => {
+                error!("⚠️  Unknown status: {}", status);
+                return;
+            }
         }
-    });
+    } else {
+        error!("⚠️  No queue_id provided for webhook - Django requires it");
+        return;
+    };
 
     match reqwest::Client::new()
-        .post(webhook_url)
+        .post(callback_url)
         .header("Authorization", format!("Bearer {}", bearer_token))
         .header("Content-Type", "application/json")
         .json(&payload)
@@ -172,9 +264,11 @@ async fn send_webhook_callback(
     {
         Ok(response) => {
             if response.status().is_success() {
-                info!("✅ Webhook sent successfully");
+                info!("✅ Webhook sent successfully to {}", callback_url);
             } else {
-                error!("❌ Webhook failed with status: {} - {}", response.status(), response.text().await.unwrap_or_default());
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                error!("❌ Webhook failed with status: {} - {}", status, body);
             }
         }
         Err(e) => {
