@@ -17,13 +17,6 @@ struct OllamaRequest {
     prompt: String,
     stream: bool,
     format: String,
-    options: OllamaOptions,
-}
-
-#[derive(Serialize)]
-struct OllamaOptions {
-    temperature: f32,
-    num_predict: usize,
 }
 
 #[derive(Deserialize)]
@@ -71,10 +64,6 @@ Extract all information into JSON format."#,
             prompt,
             stream: false,
             format: "json".to_string(),
-            options: OllamaOptions {
-                temperature: 0.0,
-                num_predict: 8192,
-            },
         };
 
         info!("Calling Ollama API...");
